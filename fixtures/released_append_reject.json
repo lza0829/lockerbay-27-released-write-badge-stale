@@ -1,0 +1,49 @@
+{
+  "说明": "夹具：一条事件指向已释放占用（OCC-CAB-A-01-E1，由 E3 取件释放），另一条先正常二次投柜再对已释放占用追加晚到取件。",
+  "events": [
+    {
+      "id": "R0",
+      "cabinet_id": "CAB-A",
+      "cell_id": "CAB-A-01",
+      "event_type": "drop",
+      "event_ts": "2026-11-19T03:00:00Z",
+      "tracking_no": "TN1004",
+      "payload": {}
+    },
+    {
+      "id": "R1",
+      "cabinet_id": "CAB-A",
+      "cell_id": "CAB-A-01",
+      "event_type": "pickup",
+      "event_ts": "2026-11-19T04:00:00Z",
+      "tracking_no": "TN1001",
+      "payload": {
+        "occupancy_id": "OCC-CAB-A-01-E1",
+        "reason": "late_pickup_scan"
+      }
+    },
+    {
+      "id": "R2",
+      "cabinet_id": "CAB-A",
+      "cell_id": "CAB-A-01",
+      "event_type": "tracking_update",
+      "event_ts": "2026-11-19T05:00:00Z",
+      "tracking_no": "TN1001",
+      "payload": {
+        "occupancy_id": "OCC-CAB-A-01-E1",
+        "new_tracking_no": "TN9999"
+      }
+    },
+    {
+      "id": "R3",
+      "cabinet_id": "CAB-A",
+      "cell_id": "CAB-A-01",
+      "event_type": "drop",
+      "event_ts": "2026-11-19T06:00:00Z",
+      "tracking_no": "TN1004",
+      "payload": {
+        "occupancy": { "id": "OCC-CAB-A-01-E1" }
+      }
+    }
+  ]
+}
