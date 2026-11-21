@@ -3,10 +3,21 @@ import { onMounted, ref } from 'vue'
 import { api } from '../api.js'
 const overview = ref(null)
 const bay = ref([])
-onMounted(async () => {
+async function load() {
   overview.value = await api.overview()
   bay.value = await api.bay()
-})
+}
+function dotClass(cell) {
+  if (!cell.occupancy) return 'vacant'
+  return cell.writable ? 'writable' : 'sealed'
+}
+function dotTitle(cell) {
+  if (!cell.occupancy) return '无占用'
+  if (cell.writable) return '可写'
+  const st = cell.write_gate?.status || cell.occupancy?.status
+  return st === 'released' || st === 'closed' ? '已释放 · 写闸已卸' : '写闸已关'
+}
+onMounted(load)
 </script>
 <template>
   <div data-plant="27-released-write-badge-stale" class="plant-mark" style="display:none"></div>
@@ -30,7 +41,11 @@ onMounted(async () => {
             <div class="meta">{{ cell.size_code }} · {{ cell.status === 'occupied' ? '占用' : '空闲' }}</div>
           </div>
           <div class="meta" v-if="cell.status === 'occupied' && cell.occupancy?.tracking_no">{{ cell.occupancy.tracking_no }}</div>
-          <span class="dot" :title="'可写'" />
+          <span
+            class="dot"
+            :class="dotClass(cell)"
+            :title="dotTitle(cell)"
+          />
         </div>
       </div>
     </section>

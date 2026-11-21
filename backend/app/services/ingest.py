@@ -4,6 +4,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from app.db import FIXTURES_DIR, connect
+from app.modules import occupancy_write_gate as write_gate
 from app.modules import released_occ_append_reject as released_reject
 
 
@@ -56,7 +57,13 @@ def ingest_events(conn, events):
 
     调用方负责 commit / rollback，便于整趟失败闭。
     返回 (accepted, rejected, duplicates)。
+
+    本函数自带外层事务：``record_reject`` 用 SAVEPOINT 做「拒收 + 卸写闸 +
+    卸标审计」原子性；若外层无事务，最外层 RELEASE 会把前几条提前提交，
+    整趟失败闭就破了。因此这里先 BEGIN，保证中途任何一条失败都能整体回滚。
     """
+    if not conn.in_transaction:
+        conn.execute("BEGIN")
     accepted = rejected = duplicates = 0
     for ev in events:
         rejection = released_reject.classify(conn, ev)
@@ -99,6 +106,7 @@ def apply_event(conn, ev) -> bool:
                 (oid, ev["cell_id"], ev["tracking_no"], ev["event_ts"], None, "occupied", ev["id"]),
             )
             conn.execute("UPDATE cells SET status='occupied' WHERE id=?", (ev["cell_id"],))
+            write_gate.ensure_gate(conn, oid, at=ev["event_ts"])
     elif ev["event_type"] == "pickup" and ev.get("cell_id"):
         row = conn.execute(
             "SELECT id FROM occupancies WHERE cell_id=? AND status='occupied' ORDER BY opened_at DESC LIMIT 1",
@@ -110,6 +118,14 @@ def apply_event(conn, ev) -> bool:
                 (ev["event_ts"], ev["id"], row["id"]),
             )
             conn.execute("UPDATE cells SET status='free' WHERE id=?", (ev["cell_id"],))
+            write_gate.release(
+                conn,
+                row["id"],
+                event_id=ev["id"],
+                action=write_gate.ACTION_PICKUP,
+                at=ev["event_ts"],
+                reason="pickup_released",
+            )
     return True
 
 

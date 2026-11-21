@@ -5,13 +5,19 @@ const proofs = ref([])
 const rejects = ref([])
 const selected = ref(null)
 const detail = ref(null)
+const gate = ref(null)
 
 async function load() {
   ;[proofs.value, rejects.value] = await Promise.all([api.proofs(), api.rejects()])
 }
 async function inspect(row) {
   selected.value = row.occupancy_id
-  detail.value = await api.rejectProof(row.occupancy_id)
+  const [d, g] = await Promise.all([
+    api.rejectProof(row.occupancy_id),
+    api.gateProof(row.occupancy_id).catch(() => null),
+  ])
+  detail.value = d
+  gate.value = g
 }
 onMounted(load)
 </script>
@@ -76,6 +82,40 @@ onMounted(load)
       </table>
       <h3 style="font-size:.95rem;margin:1rem 0 .4rem">搁置原始载荷（共 {{ detail.rejected_count }} 条）</h3>
       <pre v-for="x in detail.rejections" :key="x.id" class="panel" style="margin:.4rem 0">{{ x.member_json }}</pre>
+
+      <template v-if="gate">
+        <h3 style="font-size:.95rem;margin:1rem 0 .4rem">
+          写闸角标
+          <small class="sub" style="margin:0">
+            {{ gate.gate.writable ? '仍可写' : '已卸' }} · rev {{ gate.gate.gate_rev }} ·
+            {{ gate.consistent ? '核证一致' : '核证异常：' + gate.problems.join('、') }}
+          </small>
+        </h3>
+        <table>
+          <thead><tr><th>可写</th><th>卸标时刻</th><th>卸标事件</th><th>原因</th><th>审计行</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>{{ gate.gate.writable ? '是' : '否' }}</td>
+              <td>{{ gate.gate.released_at || '—' }}</td>
+              <td><code>{{ gate.gate.released_by_event_id || '—' }}</code></td>
+              <td>{{ gate.gate.release_reason || '—' }}</td>
+              <td>{{ gate.audit_count }} / 缺 {{ gate.missing_audits.length }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <table style="margin-top:.5rem">
+          <thead><tr><th>审计 id</th><th>事件</th><th>动作</th><th>gate_rev</th><th>时刻</th></tr></thead>
+          <tbody>
+            <tr v-for="a in gate.audits" :key="a.id">
+              <td>{{ a.id }}</td>
+              <td><code>{{ a.event_id || '—' }}</code></td>
+              <td>{{ a.action }}</td>
+              <td>{{ a.gate_rev }}</td>
+              <td>{{ a.created_at }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </template>
     </div>
   </div>
 </template>

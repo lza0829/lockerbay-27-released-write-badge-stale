@@ -37,5 +37,28 @@ npm run dev
   （`POST /api/ingest/run {"fixture":"released_append_reject.json"}`），
   验证指向已释放占用的事件进搁置、历史行不动。
 
+## 写闸卸标（拒收即卸可写角标）
+
+`backend/app/modules/occupancy_write_gate`：
+
+- **定死形态**——独立 `occupancy_write_gate`（`writable` / `gate_rev` /
+  `released_at` / `released_by_event_id` / `release_reason`）与
+  `occupancy_write_gate_audit` 审计表。不往 `occupancies` 行加列，已释放
+  占用行沿用不可变触发器。
+- **提交形态**——拒收 + 卸写闸 + 写审计同一事务、缺一回滚
+  （`record_reject` → `write_gate.release`，均为 SAVEPOINT）。
+  回执 `rejected` 时该占用必为 `writable=false`，且必有一条
+  `action='reject_release'` 审计（`occupancy_id` / `event_id` / `created_at`）。
+- **误卸防护**——`release()` 只接受确实 `released` / `closed` 的占用；
+  对 open 占用或不存在占用抛 `GateViolation`，其它 open 占用写闸不受影响。
+- **只读核证接口**：`GET /api/write-gate/{occupancy_id}`（角标）、
+  `GET /api/write-gates?writable=`（清单）、
+  `GET /api/occupancies/{id}/gate-audits`（卸标审计）、
+  `GET /api/occupancies/{id}/write-gate-proof`（角标 + 审计 + 拒收一致性）。
+- **协同**——开账建闸（`ensure_gate`）、取件释放卸闸（`pickup_release`）、
+  拒收卸闸（`reject_release`）；格阵 `GET /api/bay` 的 `cell.writable`
+  与角标同源，已释放格不再亮可写点。旧库由 `seed.backfill_write_gates`
+  补齐闸行与历史拒收审计。
+
 测试：`cd backend && python -m pytest tests -q`
 

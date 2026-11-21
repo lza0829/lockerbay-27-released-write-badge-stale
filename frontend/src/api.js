@@ -28,4 +28,8 @@ export const api = {
       body: JSON.stringify(fixture ? { fixture } : {}),
     }),
   writeGate: (id) => req(`/api/write-gate/${id}`),
+  writeGates: (writable) =>
+    req('/api/write-gates' + (writable === undefined ? '' : `?writable=${writable}`)),
+  gateAudits: (id) => req(`/api/occupancies/${encodeURIComponent(id)}/gate-audits`),
+  gateProof: (id) => req(`/api/occupancies/${encodeURIComponent(id)}/write-gate-proof`),
 }

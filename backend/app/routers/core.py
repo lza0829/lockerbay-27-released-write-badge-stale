@@ -137,11 +137,46 @@ def put_overdue(body: dict = Body(...)):
 # --- plant routes ---
 from app.modules import occupancy_write_gate as write_gate
 
+
 @router.get("/write-gate/{occupancy_id}")
-def write_gate(occupancy_id: str):
+def get_write_gate(occupancy_id: str):
+    """只读：占用写闸角标（released 占用恒为 writable=false）。"""
     conn = connect()
     try:
         return write_gate.gate_of(conn, occupancy_id)
+    finally:
+        conn.close()
+
+
+@router.get("/write-gates")
+def list_write_gates(writable: bool | None = None):
+    """只读：列出写闸角标，可按可写态过滤。"""
+    conn = connect()
+    try:
+        return write_gate.list_gates(conn, writable)
+    finally:
+        conn.close()
+
+
+@router.get("/occupancies/{occupancy_id}/write-gate-proof")
+def write_gate_proof(occupancy_id: str):
+    """只读：写闸角标核证（占用、闸、卸标审计、拒收记录一致性）。"""
+    conn = connect()
+    try:
+        result = write_gate.proof(conn, occupancy_id)
+        if result["occupancy"] is None:
+            raise HTTPException(404, "占用不存在")
+        return result
+    finally:
+        conn.close()
+
+
+@router.get("/occupancies/{occupancy_id}/gate-audits")
+def gate_audits(occupancy_id: str):
+    """只读：某占用的卸标审计清单。"""
+    conn = connect()
+    try:
+        return write_gate.audits_of(conn, occupancy_id)
     finally:
         conn.close()
 

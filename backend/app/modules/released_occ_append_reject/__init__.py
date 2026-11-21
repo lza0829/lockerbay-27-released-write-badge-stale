@@ -17,6 +17,8 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
+from app.modules import occupancy_write_gate as write_gate
+
 STATUS = "implemented"
 
 REJECT_REASON = "append_rejected"
@@ -146,7 +148,13 @@ def _reject_exists(conn, occupancy_id: str, event_id: str | None, dedupe_key: st
 
 
 def record_reject(conn, rejection: dict) -> bool:
-    """把拒收事件落入搁置表；同一事件重复装载只保留一条。"""
+    """把拒收事件落入搁置表；同一事件重复装载只保留一条。
+
+    拒收成功即在同一事务内卸掉该占用的写闸并写卸标审计
+    （:func:`occupancy_write_gate.release`）。两步任一失败都会回滚，
+    绝不出现「回执 rejected 但占用仍可写」或「卸标审计缺行」。
+    重复事件不重复写审计，但若发现写闸仍开（历史脏数据），会补一次卸闸。
+    """
     event = rejection["event"]
     occupancy_id = rejection["occupancy_id"]
     occupancy = rejection["occupancy"]
@@ -154,6 +162,7 @@ def record_reject(conn, rejection: dict) -> bool:
     payload = event.get("payload")
     if not isinstance(payload, dict):
         payload = {}
+    detected_at = rejection["detected_at"]
     dedupe_key = _dedupe_key(occupancy_id, event)
     member = {
         "reason": REJECT_REASON,
@@ -163,16 +172,46 @@ def record_reject(conn, rejection: dict) -> bool:
         "event": event,
         "payload": payload,
         "dedupe_key": dedupe_key,
-        "detected_at": rejection["detected_at"],
+        "detected_at": detected_at,
     }
     member_json = json.dumps(member, ensure_ascii=False)
-    if _reject_exists(conn, occupancy_id, event_id, dedupe_key):
-        return False
-    conn.execute(
-        "INSERT INTO quarantine(reason, member_json, created_at, event_id, occupancy_id) "
-        "VALUES (?,?,?,?,?)",
-        (REJECT_REASON, member_json, rejection["detected_at"], event_id, occupancy_id),
-    )
+
+    with write_gate.atomic(conn, "reject"):
+        if _reject_exists(conn, occupancy_id, event_id, dedupe_key):
+            # 重复拒收：不重复记审计，但若历史脏数据仍把闸开着，补一次卸闸。
+            raw = conn.execute(
+                "SELECT writable FROM occupancy_write_gate WHERE occupancy_id=?",
+                (occupancy_id,),
+            ).fetchone()
+            if raw is not None and bool(raw["writable"]):
+                write_gate.release(
+                    conn,
+                    occupancy_id,
+                    event_id=event_id,
+                    action=write_gate.ACTION_REJECT,
+                    at=detected_at,
+                    reason=REJECT_REASON,
+                    detail={"duplicate_reject": True},
+                )
+            return False
+        conn.execute(
+            "INSERT INTO quarantine(reason, member_json, created_at, event_id, occupancy_id) "
+            "VALUES (?,?,?,?,?)",
+            (REJECT_REASON, member_json, detected_at, event_id, occupancy_id),
+        )
+        write_gate.release(
+            conn,
+            occupancy_id,
+            event_id=event_id,
+            action=write_gate.ACTION_REJECT,
+            at=detected_at,
+            reason=REJECT_REASON,
+            detail={
+                "reason": REJECT_REASON,
+                "occupancy_status": occupancy["status"],
+                "event_type": event.get("event_type"),
+            },
+        )
     return True
 
 

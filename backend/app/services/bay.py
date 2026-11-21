@@ -16,6 +16,8 @@ def overview(conn):
 
 
 def cabinet_matrix(conn):
+    from app.modules import occupancy_write_gate as write_gate
+
     cabinets = [dict(r) for r in conn.execute("SELECT * FROM cabinets ORDER BY id").fetchall()]
     out = []
     for cab in cabinets:
@@ -32,6 +34,10 @@ def cabinet_matrix(conn):
                 (cell["id"],),
             ).fetchone()
             cell["occupancy"] = dict(occ) if occ else None
+            # 格阵角标与写闸同源：占用已释放时角标不得亮可写。
+            gate = write_gate.gate_of(conn, occ["id"]) if occ else None
+            cell["write_gate"] = gate
+            cell["writable"] = bool(gate and gate["writable"])
         out.append({**cab, "cells": cells})
     return out
 

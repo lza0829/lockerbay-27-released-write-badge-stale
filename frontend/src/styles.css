@@ -147,6 +147,16 @@ h1 { margin: 0 0 .35rem; font-size: 1.35rem; font-weight: 600; }
 }
 .cell.free .dot { background: var(--free); box-shadow: 0 0 8px rgba(61,155,122,.6); }
 .cell.occupied .dot { background: var(--busy); box-shadow: 0 0 8px rgba(217,119,87,.55); }
+/* 写闸已卸：角标不再亮，改为空心灰点，避免误判可写。 */
+.cell .dot.sealed {
+  background: transparent;
+  border: 1px solid var(--muted);
+  box-shadow: none;
+}
+.cell.free .dot.sealed,
+.cell.occupied .dot.sealed { background: transparent; box-shadow: none; }
+/* 无占用：不画点。 */
+.cell .dot.vacant { background: transparent; box-shadow: none; }
 
 button, .btn {
   font: inherit;
